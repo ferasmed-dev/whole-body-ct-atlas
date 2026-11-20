@@ -1,0 +1,6 @@
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+# base64 copies are only needed for hosts that refuse .bin files (see tools/b64split.py)
+data/*.b64.*.txt

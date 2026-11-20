@@ -1,0 +1,13 @@
+{
+  "name": "whole-body-ct-atlas",
+  "version": "0.1.0",
+  "description": "Interactive whole-body CT atlas for learning cross-sectional anatomy (Spanish/English).",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test",
+    "start": "python3 -m http.server 8000"
+  },
+  "author": "Feras Elhissi",
+  "license": "MIT"
+}

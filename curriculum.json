@@ -1,0 +1,12 @@
+{
+  "topic": "Cross-sectional anatomy on whole-body CT",
+  "topic_es": "Anatomía radiológica seccional en TC de cuerpo entero",
+  "system": "Multisystem (head, neck, thorax, abdomen, pelvis)",
+  "specialty": "Radiology / Anatomy",
+  "eciModule": "Module I (Morfología, estructura y función del cuerpo humano) and Module IV (Procedimientos diagnósticos y terapéuticos) — Orden ECI/332/2008",
+  "typicalSubjects": ["Anatomía Humana", "Anatomía radiológica", "Radiología General", "Radiología y Medicina Física", "Diagnóstico por la Imagen"],
+  "mirRelevant": true,
+  "keywords_es": ["TC", "tomografía computarizada", "anatomía seccional", "anatomía radiológica", "ventana", "unidades Hounsfield", "niveles vertebrales", "carina", "hilio renal", "bifurcación aórtica"],
+  "keywords_en": ["CT", "computed tomography", "cross-sectional anatomy", "radiological anatomy", "windowing", "Hounsfield units", "vertebral levels", "carina", "renal hilum", "aortic bifurcation"],
+  "languages": ["es", "en"]
+}
