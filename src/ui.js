@@ -2,6 +2,8 @@
 import { WINDOWS, PLANES, unshuffleInt16, base64ToBytes, isGzip, buildLUT, planeInfo, sliceOf, withSlice, voxelAt, pixelOf,
   index3, extractSlice, sliceLabels, layoutColumn, levelRange, searchStructures, nearestVoxel, parseParams, buildParams } from './core.js';
 import { STRINGS, pickLang } from './i18n.js';
+import { LESION_ID, applyPatch, mrClass, mrSignal, projectVolume, projectPatch, filmStats, filmImage } from './pathology.js';
+import { initModules } from './modui.js';
 
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const DATA = 'data/';
@@ -15,12 +17,16 @@ const S = {
   vis: new Uint8Array(256), sysOn: {}, sel: 0, iso: false, hover: 0, lastLevel: null,
   byId: {}, byKey: {}, R: new Uint8Array(256), G: new Uint8Array(256), B: new Uint8Array(256),
   lut: new Uint8Array(4096), measure: null, savedVis: null,
+  // pathology modules (src/modui.js): simulated lesions are laid over the real CT as patches
+  patch: { A: null, B: null }, pv: { A: 0, B: 0 }, lesionName: { A: null, B: null },
+  phase: 'portal', shift: new Int16Array(256), modality: 'ct', mrCls: [], drrBase: {}, drr: { A: {}, B: {} },
+  showMarks: true, onClick: null, mod: null,
 };
 const T = () => STRINGS[S.lang];
 const nm = s => (S.lang === 'es' ? s.es : s.en);
 const alt = s => (S.lang === 'es' ? 'EN · ' + s.en : 'ES · ' + s.es);   // the other-language term, tagged
 const shortName = s => (S.lang === 'es' ? s.short : s.short_en);
-const sysName = id => { const y = S.atlas.systems.find(x => x.id === id); return y ? (S.lang === 'es' ? y.es : y.en) : id; };
+const sysName = id => { if (id === '__lesion') return T().mod.simLesion; const y = S.atlas.systems.find(x => x.id === id); return y ? (S.lang === 'es' ? y.es : y.en) : id; };
 const lvlName = l => (l ? (T().level[l] || l) : '');
 const klName = k => (S.lang === 'es' ? k.name : k.name_en);
 const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -74,7 +80,10 @@ async function load() {
 
 function hex(c) { const h = c.replace('#', ''); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)); }
 function setupData() {
-  for (const s of S.atlas.structures) { S.byId[s.id] = s; S.byKey[s.key] = s; [S.R[s.id], S.G[s.id], S.B[s.id]] = hex(s.color); S.vis[s.id] = 1; }
+  for (const s of S.atlas.structures) { S.byId[s.id] = s; S.byKey[s.key] = s; [S.R[s.id], S.G[s.id], S.B[s.id]] = hex(s.color); S.vis[s.id] = 1; S.mrCls[s.id] = mrClass(s.key); }
+  // pseudo-structure for simulated lesions (not in the sidebar; named after the module entity on hover)
+  S.byId[LESION_ID] = { id: LESION_ID, key: '__lesion', es: 'Lesión simulada', en: 'Simulated lesion', short: 'Lesión', short_en: 'Lesion', system: '__lesion', color: '#ff4fd8', bbox: [0, 0, 0, 0, 0, 0] };
+  [S.R[LESION_ID], S.G[LESION_ID], S.B[LESION_ID]] = hex('#ff4fd8'); S.vis[LESION_ID] = 1; S.mrCls[LESION_ID] = 'soft';
   for (const y of S.atlas.systems) S.sysOn[y.id] = true;
   const k = S.atlas.keylevels.find(k => k.id === 'renal-hila');
   S.cur = { z: k ? k.z : Math.floor(S.dims[0] / 2), y: Math.floor(S.dims[1] * 0.45), x: Math.floor(S.dims[2] / 2) };
@@ -90,9 +99,12 @@ function setWindow(key, c, w) {
 /* ---------------- views ---------------- */
 class View {
   constructor(el) {
-    this.el = el; this.plane = el.dataset.plane; this.cv = el.querySelector('canvas.main'); this.ctx = this.cv.getContext('2d');
+    this.el = el; this.plane = el.dataset.plane; this.slot = el.dataset.slot || 'A'; this.cv = el.querySelector('canvas.main'); this.ctx = this.cv.getContext('2d');
     this.off = document.createElement('canvas'); this.octx = this.off.getContext('2d');
-    this.zoom = 1; this.px = 0; this.py = 0; this.key = ''; this.hu = null; this.lb = null; this.img = null; this.cands = null;
+    this.zoom = 1; this.px = 0; this.py = 0; this.key = ''; this.hu = null; this.lb = null; this.mr = null; this.img = null; this.cands = null;
+    if (this.slot === 'B') {     // compare view: mirrors the active plane, shares its zoom and pan
+      for (const k of ['zoom', 'px', 'py']) Object.defineProperty(this, k, { get: () => (views[S.active] ? views[S.active][k] : 1), set: v => { if (views[S.active]) views[S.active][k] = v; } });
+    }
   }
   size() { const r = this.el.getBoundingClientRect(); return [r.width, r.height]; }
   geom() {
@@ -103,22 +115,33 @@ class View {
   toSlice(sx, sy) { const g = this.geom(); return { u: Math.floor((sx - g.ox) / (g.s * g.pw)), v: Math.floor((sy - g.oy) / (g.s * g.ph)), g }; }
   toScreen(u, v, g) { return [g.ox + (u + 0.5) * g.s * g.pw, g.oy + (v + 0.5) * g.s * g.ph]; }
   extract() {
-    const P = planeInfo(this.plane, S.dims, S.sp), k = this.plane + ':' + sliceOf(this.plane, S.cur);
+    const P = planeInfo(this.plane, S.dims, S.sp), mrSeq = S.modality === 't1' || S.modality === 't2' || S.modality === 'stir' ? S.modality : null;
+    const k = [this.plane, sliceOf(this.plane, S.cur), this.slot, S.pv[this.slot], S.phase, mrSeq].join(':');
     if (this.key === k) return;
     this.key = k; this.cands = null;
     if (!this.hu || this.hu.length !== P.w * P.h) {
-      this.hu = new Int16Array(P.w * P.h); this.lb = new Uint8Array(P.w * P.h);
+      this.hu = new Int16Array(P.w * P.h); this.lb = new Uint8Array(P.w * P.h); this.mr = new Uint8Array(P.w * P.h);
       this.off.width = P.w; this.off.height = P.h; this.img = this.octx.createImageData(P.w, P.h);
     }
     extractSlice(this.plane, S.vol, S.lab, S.dims, S.cur, this.hu, this.lb);
+    if (S.phase !== 'portal') { const sh = S.shift, hu = this.hu, lb = this.lb; for (let p = 0; p < hu.length; p++) if (lb[p]) hu[p] += sh[lb[p]]; }
+    if (mrSeq) this.mr.fill(255);
+    applyPatch(this.plane, S.cur, S.patch[this.slot], this.hu, this.lb, S.dims, mrSeq, mrSeq ? this.mr : null);
   }
   compose() {
     const w = this.off.width, h = this.off.height, d = this.img.data, hu = this.hu, lb = this.lb, lut = S.lut;
     const mode = S.overlay, vis = S.vis, sel = S.sel, hov = S.hover, R = S.R, G = S.G, B = S.B, a0 = S.opacity;
+    const seq = S.modality === 't1' || S.modality === 't2' || S.modality === 'stir' ? S.modality : null, mr = this.mr, cls = S.mrCls;
+    const drr = S.modality === 'rx' ? drrImage(this.slot, this.plane) : null;
     for (let v = 0, p = 0; v < h; v++) for (let u = 0; u < w; u++, p++) {
-      let hv = hu[p] + 1024; hv = hv < 0 ? 0 : hv > 4095 ? 4095 : hv;
-      const g = lut[hv]; let r = g, gg = g, b = g; const l = lb[p];
-      if (l && vis[l]) {
+      let g;
+      if (drr) { const q = p * 4; d[q] = d[q + 1] = d[q + 2] = drr[p]; d[q + 3] = 255; continue; }
+      if (seq) g = mr[p] !== 255 ? Math.round(mr[p] * 255 / 254) : Math.round(mrSignal(seq, hu[p], cls[lb[p]] || 'none') * 255);
+      else { let hv = hu[p] + 1024; hv = hv < 0 ? 0 : hv > 4095 ? 4095 : hv; g = lut[hv]; }
+      let r = g, gg = g, b = g; const l = lb[p];
+      if (l === LESION_ID) {        // simulated lesion: the grey level is the teaching content; outline only on request
+        if (S.hiLesion && vis[l] && ((u > 0 && lb[p - 1] !== l) || (u < w - 1 && lb[p + 1] !== l) || (v > 0 && lb[p - w] !== l) || (v < h - 1 && lb[p + w] !== l))) { r = 255; gg = 79; b = 216; }
+      } else if (l && vis[l]) {
         const edge = (u > 0 && lb[p - 1] !== l) || (u < w - 1 && lb[p + 1] !== l) || (v > 0 && lb[p - w] !== l) || (v < h - 1 && lb[p + w] !== l);
         let a = 0;
         if (mode === 'fill') { a = sel ? (l === sel ? Math.min(0.85, a0 + 0.25) : a0 * 0.3) : a0; if (edge && (l === sel || l === hov)) a = 0.95; }
@@ -131,20 +154,63 @@ class View {
     }
     this.octx.putImageData(this.img, 0, 0);
   }
-  visible() { return S.layout === 'triple' || this.plane === S.active; }
+  visible() {
+    if (this.slot === 'B') return S.layout === 'compare';
+    return S.layout === 'triple' || this.plane === S.active;
+  }
   draw() {
+    if (this.slot === 'B' && this.plane !== S.active) { this.plane = S.active; this.key = ''; }
     if (!this.visible()) return;
-    this.extract(); this.compose();
     const dpr = window.devicePixelRatio || 1, [cw, ch] = this.size();
     if (this.cv.width !== Math.round(cw * dpr) || this.cv.height !== Math.round(ch * dpr)) { this.cv.width = Math.round(cw * dpr); this.cv.height = Math.round(ch * dpr); }
     const c = this.ctx; c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const air = S.lut[24]; c.fillStyle = `rgb(${air},${air},${air})`; c.fillRect(0, 0, cw, ch);   // air colour: crop edge invisible in any window
+    if (S.modality === 'rx' && this.plane === 'axial') {      // a plain film is a projection: no axial image
+      c.fillStyle = '#000'; c.fillRect(0, 0, cw, ch); c.fillStyle = 'rgba(230,237,245,.7)'; c.font = '13px system-ui'; c.textAlign = 'center';
+      c.fillText(T().mod.rxAxial, cw / 2, ch / 2); this.el.querySelector('.tag i').textContent = ''; if (this.plane === 'axial') drawScout(); return;
+    }
+    if (this.pendingFocus && this.slot !== 'B' && cw > 0) {      // pan so a point (e.g. the lesion) sits in the centre
+      this.px = 0; this.py = 0; const g0 = this.geom(), q = pixelOf(this.plane, this.pendingFocus), [sx, sy] = this.toScreen(q.u, q.v, g0);
+      this.px = cw / 2 - sx; this.py = ch / 2 - sy; this.pendingFocus = null;
+    }
+    this.extract(); this.compose();
+    const air = S.modality === 'ct' ? S.lut[24] : 0; c.fillStyle = `rgb(${air},${air},${air})`; c.fillRect(0, 0, cw, ch);   // air colour: crop edge invisible in any window
     const g = this.geom();
     c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
     c.drawImage(this.off, g.ox, g.oy, g.iw * g.s, g.ih * g.s);
-    this.drawCross(c, g); this.drawOrient(c, g); this.drawScale(c, g); this.drawMeasure(c, g); this.drawLabels(c, g);
+    this.drawCross(c, g); this.drawOrient(c, g); this.drawScale(c, g); this.drawMeasure(c, g);
+    if (S.modality !== 'rx') this.drawLabels(c, g);
+    this.drawMarks(c, g); this.drawBadge(c, g);
     this.el.querySelector('.tag i').textContent = (sliceOf(this.plane, S.cur) + 1) + ' / ' + g.n;
     if (this.plane === 'axial') drawScout();
+  }
+  /** Teaching marks of the current lesion (arrows with a short text), hidden during an exam. */
+  drawMarks(c, g) {
+    const P = S.patch[this.slot]; if (!P || !P.marks || !P.marks.length || !S.showMarks || (S.mod && S.mod.exam)) return;
+    const tol = 8, sl = sliceOf(this.plane, S.cur), axis = { axial: 0, coronal: 1, sagittal: 2 }[this.plane];
+    c.save(); c.font = '600 11.5px system-ui,-apple-system,Segoe UI,sans-serif'; c.textBaseline = 'middle';
+    for (const m of P.marks) {
+      if (S.modality !== 'rx' && Math.abs(m.at[axis] - sl) > tol) continue;
+      if (m.planes && !m.planes.includes(this.plane)) continue;
+      const q = pixelOf(this.plane, { z: m.at[0], y: m.at[1], x: m.at[2] }), [x, y] = this.toScreen(q.u, q.v, g);
+      const t = S.lang === 'es' ? m.text.es : m.text.en, dx = m.dx !== undefined ? m.dx : 46, dy = m.dy !== undefined ? m.dy : -34, tx = x + dx, ty = y + dy;
+      c.strokeStyle = '#ff4fd8'; c.fillStyle = '#ff4fd8'; c.lineWidth = 1.6;
+      c.beginPath(); c.moveTo(tx, ty); c.lineTo(x, y); c.stroke();
+      const ang = Math.atan2(y - ty, x - tx); c.beginPath(); c.moveTo(x, y); c.lineTo(x - 8 * Math.cos(ang - 0.4), y - 8 * Math.sin(ang - 0.4)); c.lineTo(x - 8 * Math.cos(ang + 0.4), y - 8 * Math.sin(ang + 0.4)); c.fill();
+      const tw = c.measureText(t).width, bx = dx >= 0 ? tx : tx - tw - 8;
+      c.fillStyle = 'rgba(10,14,19,.85)'; c.fillRect(bx, ty - 10, tw + 8, 20); c.fillStyle = '#ffd6f4'; c.textAlign = 'left'; c.fillText(t, bx + 4, ty);
+    }
+    c.restore();
+  }
+  /** Corner badge: which modality/phase this view simulates, and the compared entity's name. */
+  drawBadge(c, g) {
+    const t = T().mod, parts = [];
+    if (S.modality !== 'ct') parts.push(t.modName[S.modality] + ' · ' + t.simulated);
+    else if (S.phase !== 'portal') parts.push((S.phaseLabel || t.phaseName[S.phase]) + ' · ' + t.simulated);
+    if (S.layout === 'compare' && S.lesionName[this.slot]) parts.unshift((this.slot === 'A' ? 'A · ' : 'B · ') + S.lesionName[this.slot]);
+    if (!parts.length) return;
+    c.save(); c.font = '600 11px ui-monospace,Menlo,monospace'; c.textBaseline = 'middle'; c.textAlign = 'right';
+    let y = 46; for (const p of parts) { const w = c.measureText(p).width; c.fillStyle = 'rgba(10,14,19,.8)'; c.fillRect(g.cw - w - 18, y - 10, w + 12, 20); c.fillStyle = '#f6c453'; c.fillText(p, g.cw - 12, y); y += 24; }
+    c.restore();
   }
   drawCross(c, g) {
     if (S.layout !== 'triple') return;
@@ -213,7 +279,7 @@ class View {
     const scoutBottom = scoutOn ? 8 + $('.scout').offsetHeight + 12 : 34;
     const place = (arr, isLeft) => {
       if (!arr.length) return;
-      for (const o of arr) { o.text = shortName(S.byId[o.k.l]); o.tw = c.measureText(o.text).width; }
+      for (const o of arr) { o.text = o.k.l === LESION_ID ? (S.lesionName[this.slot] || shortName(S.byId[o.k.l])) : shortName(S.byId[o.k.l]); o.tw = c.measureText(o.text).width; }
       layoutColumn(arr, isLeft ? 34 : scoutBottom, g.ch - 56, lh);
       const maxw = Math.max(...arr.map(o => o.tw));
       let tx;
@@ -257,6 +323,16 @@ function drawScout() {
   const c = cv.getContext('2d'); c.imageSmoothingEnabled = true; c.drawImage(scoutImg, 0, 0, cv.width, cv.height);
   const y = (S.cur.z + 0.5) / S.dims[0] * cv.height;
   c.strokeStyle = '#f6c453'; c.lineWidth = 2; c.beginPath(); c.moveTo(0, y); c.lineTo(cv.width, y); c.stroke();
+}
+
+/* ---------------- simulated plain film (DRR) ---------------- */
+// Base projections are computed once per plane; each slot adds its patch's change on top.
+function drrImage(slot, plane) {
+  if (plane === 'axial') return null;
+  if (!S.drrBase[plane]) { const p = projectVolume(S.vol, S.dims, S.sp, plane); S.drrBase[plane] = { p, stats: filmStats(p) }; }
+  const c = S.drr[slot], b = S.drrBase[plane], P = planeInfo(plane, S.dims, S.sp);
+  if (!c[plane] || c[plane].v !== S.pv[slot]) c[plane] = { v: S.pv[slot], img: filmImage(projectPatch(b.p, S.vol, S.dims, S.sp, plane, S.patch[slot]), P.w, P.h, b.stats) };
+  return c[plane].img;
 }
 
 /* ---------------- render loop ---------------- */
@@ -347,6 +423,12 @@ function renderCard() {
   $('#cMeta').innerHTML = `<span class="chip" style="color:${y.color}">${esc(sysName(s.system))}</span><span class="chip">${vol}</span>${lv ? `<span class="chip">${esc(lv)}</span>` : ''}`;
   card.classList.add('on');
 }
+/** Move the crosshair to a voxel and centre every view on it at a given zoom (used by the pathology modules). */
+function focusOn(pt, zoom) {
+  S.cur = { z: pt.z, y: pt.y, x: pt.x }; S.lastLevel = null;
+  for (const v of Object.values(views)) if (v.slot !== 'B') { v.zoom = zoom || 1; v.pendingFocus = { ...S.cur }; }
+  invalidate();
+}
 function goTo(s) {
   S.cur = nearestVoxel(S.lab, S.dims, s); S.lastLevel = null;
   for (const v of Object.values(views)) { v.px = 0; v.py = 0; }
@@ -392,22 +474,31 @@ function setSlice(plane, v) {
 function setPlane(p) {
   for (const b of $$('#planeSeg button')) b.classList.toggle('on', b.dataset.p === p);
   if (p === 'triple') { S.layout = 'triple'; $('#views').className = 'views triple'; }
-  else { S.layout = 'single'; S.active = p; $('#views').className = 'views single'; }
-  for (const el of $$('.view')) el.classList.toggle('active', el.dataset.plane === S.active);
+  else { S.layout = S.compareOn ? 'compare' : 'single'; S.active = p; $('#views').className = 'views ' + S.layout; }
+  for (const el of $$('.view')) el.classList.toggle('active', !el.dataset.slot && el.dataset.plane === S.active);
   invalidate();
+}
+/** Side-by-side compare (two simulated lesions in the same plane); only outside the triple view. */
+function setCompare(on) {
+  S.compareOn = !!on;
+  setPlane(S.layout === 'triple' ? 'triple' : S.active);
 }
 
 /* ---------------- tooltip ---------------- */
 function showTip(view, sx, sy, cx, cy) {
   const { u, v, g } = view.toSlice(sx, sy), tip = $('#tip');
   if (u < 0 || v < 0 || u >= g.w || v >= g.h) { hideTip(); return; }
-  const p = voxelAt(view.plane, u, v, S.cur), i = index3(S.dims, p.z, p.y, p.x), hu = S.vol[i], l = S.lab[i];
-  const h = l && S.vis[l] ? l : 0;
+  const p = voxelAt(view.plane, u, v, S.cur), i = index3(S.dims, p.z, p.y, p.x), hu = S.vol[i];
+  const l = view.lb && S.modality !== 'rx' ? view.lb[v * g.w + u] : S.lab[i];     // patched label (simulated lesion) when present
+  const exam = S.mod && S.mod.exam;
+  const h = l && S.vis[l] && !(exam && l === LESION_ID) ? l : 0;
   if (h !== S.hover) { S.hover = h; render(); }
   let html = '';
-  if (h) { const s = S.byId[l]; html += `<div><span class="sw" style="background:${s.color}"></span><b>${esc(nm(s))}</b></div><div class="en">${esc(alt(s))} · ${esc(sysName(s.system))}</div>`; }
-  const lv = lvlName(S.atlas.levels[p.z]);
-  html += `<div class="row"><span>${hu} ${T().hu}</span>${lv ? `<span>${esc(lv)}</span>` : ''}</div>`;
+  const vhu = view.hu ? view.hu[v * g.w + u] : hu;      // what is on screen (phase / simulated lesion included)
+  if (h === LESION_ID) { html += `<div><span class="sw" style="background:${S.byId[h].color}"></span><b>${esc(S.lesionName[view.slot] || nm(S.byId[h]))}</b></div><div class="en">${esc(T().mod.simLesion)}</div>`; }
+  else if (h) { const s = S.byId[l]; html += `<div><span class="sw" style="background:${s.color}"></span><b>${esc(nm(s))}</b></div><div class="en">${esc(alt(s))} · ${esc(sysName(s.system))}</div>`; }
+  const lv = exam ? '' : lvlName(S.atlas.levels[p.z]);
+  html += `<div class="row">${S.modality === 'ct' ? `<span>${vhu} ${T().hu}</span>` : ''}${lv ? `<span>${esc(lv)}</span>` : ''}</div>`;
   tip.innerHTML = html; tip.style.display = 'block';
   const r = $('#stage').getBoundingClientRect(); let x = cx - r.left + 14, y = cy - r.top + 14;
   if (x + tip.offsetWidth > r.width - 6) x = cx - r.left - tip.offsetWidth - 14;
@@ -472,6 +563,7 @@ function bindView(view) {
       const { u, v, g } = view.toSlice(drag.x0, drag.y0);
       if (u >= 0 && v >= 0 && u < g.w && v < g.h) {
         const p = voxelAt(view.plane, u, v, S.cur), l = S.lab[index3(S.dims, p.z, p.y, p.x)];
+        if (S.onClick && S.onClick(p, view)) { drag = null; return; }      // e.g. exam "find the lesion"
         if (S.layout === 'triple') { S.cur = p; S.lastLevel = null; invalidate(); }
         select(l && S.vis[l] ? l : 0, false);
         if (drag.type !== 'mouse') showTip(view, drag.x0, drag.y0, e.clientX, e.clientY);
@@ -503,8 +595,10 @@ function applyLang(lang) {
   $('#lvl').title = t.vertLevel;
   if (S.atlas) {
     $('#seriesTxt').textContent = lang === 'es' ? S.atlas.series : S.atlas.series_en;
+    S.byId[LESION_ID] && Object.assign(S.byId[LESION_ID], { es: STRINGS.es.mod.simLesion, en: STRINGS.en.mod.simLesion });
     buildSidebar(); buildKeys(); renderCard(); relabel();
   }
+  if (MOD) MOD.relang();
 }
 
 /* ---------------- deep links ---------------- */
@@ -512,7 +606,10 @@ function currentLink() {
   const st = { view: S.layout === 'triple' ? 'triple' : S.active, window: S.winKey === 'custom' ? null : S.winKey,
     labels: S.labels, iso: S.iso, lang: S.lang, structure: S.sel ? S.byId[S.sel].key : null };
   if (S.lastLevel) st.level = S.lastLevel; else if (!S.sel) st.z = S.cur.z;
-  return location.origin + location.pathname + buildParams(st);
+  let q = buildParams(st);
+  const m = MOD ? MOD.linkParams() : '';
+  if (m) q = (q ? q + '&' : '?') + m;
+  return location.origin + location.pathname + q;
 }
 function toast(msg, ms = 1800) { const t = $('#toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => (t.style.display = 'none'), ms); }
 async function copyLink() {
@@ -531,7 +628,7 @@ function applyParams(p) {
 
 /* ---------------- wire ---------------- */
 function wire() {
-  for (const el of $$('.view')) { const v = new View(el); views[v.plane] = v; bindView(v); }
+  for (const el of $$('.view')) { const v = new View(el); views[v.slot === 'B' ? 'B' : v.plane] = v; bindView(v); }
   const seg = (sel, fn) => { $(sel).onclick = e => { const b = e.target.closest('button'); if (!b) return; for (const x of $(sel).querySelectorAll('button')) x.classList.toggle('on', x === b); fn(b); }; };
   $('#planeSeg').onclick = e => { const b = e.target.closest('button'); if (b) setPlane(b.dataset.p); };
   seg('#toolSeg', b => { S.tool = b.dataset.t; if (S.tool !== 'medir') { S.measure = null; render(); } });
@@ -569,6 +666,7 @@ function wire() {
 }
 
 /* ---------------- boot ---------------- */
+let MOD = null;     // pathology-module controller (src/modui.js)
 (async function boot() {
   const pre = new URLSearchParams(location.search).get('lang');
   wire(); applyLang(pickLang(pre));
@@ -576,6 +674,11 @@ function wire() {
     await load();
     setupData(); applyLang(S.lang); buildScout();
     applyParams(parseParams(location.search, S.atlas));
+    MOD = initModules({ S, T, views, render, invalidate, relabel, setPlane, setCompare, setWindow, select, toast, esc, $, $$, focusOn,
+      setOverlay: o => { S.overlay = o; for (const x of $$('#ovSeg button')) x.classList.toggle('on', x.dataset.o === o); render(); },
+      setLabels: l => { S.labels = l; for (const x of $$('#lblSeg button')) x.classList.toggle('on', x.dataset.l === l); render(); },
+      copyLink, closeDrawer });
+    await MOD.boot(location.search);
     $('#loading').style.display = 'none';
     invalidate();
   } catch (err) {
@@ -585,4 +688,4 @@ function wire() {
 })();
 
 // Hook for automated checks (tests/e2e and manual debugging).
-window.__atlas = { S, views, setPlane, setSlice, select, goLevel, applyLang, currentLink, setWindow };
+window.__atlas = { S, views, setPlane, setSlice, select, goLevel, applyLang, currentLink, setWindow, setCompare, mod: () => MOD };
