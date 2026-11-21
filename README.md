@@ -2,7 +2,7 @@
 
 **Live demo:** https://ferasmed-dev.github.io/whole-body-ct-atlas/ · English: https://ferasmed-dev.github.io/whole-body-ct-atlas/?lang=en
 
-An interactive, browser-only atlas of a real contrast-enhanced CT from the skull vertex to the femoral heads. Scroll through axial, coronal and sagittal slices, or all three linked; switch 115 segmented structures on and off by system; hover any pixel for its name, system, vertebral level and Hounsfield value; and jump straight to the classic landmark levels (carina, aortic arch, gastro-oesophageal junction, renal hila, aortic bifurcation…). Spanish by default, with an English switch.
+An interactive, browser-only atlas of a real contrast-enhanced CT from the skull vertex to the femoral heads, with **pathology modules** that draw each topic's lesions on the same real anatomy. Scroll through axial, coronal and sagittal slices, or all three linked; switch 115 segmented structures on and off by system; hover any pixel for its name, system, vertebral level and Hounsfield value; and jump straight to the classic landmark levels (carina, aortic arch, gastro-oesophageal junction, renal hila, aortic bifurcation…). Spanish by default, with an English switch.
 
 ![Axial slice at L1 with labelled organs, vessels and muscles](docs/screenshot.png)
 
@@ -17,6 +17,72 @@ An interactive, browser-only atlas of a real contrast-enhanced CT from the skull
 - **Key levels**: 17 one-click landmarks, each with its vertebral level in this patient.
 - **Measure** distances in mm. **Fill / outline / no-colour** overlays with adjustable opacity.
 - **Phone-friendly**: swipe to scroll slices, pinch to zoom, two fingers to pan; the structure list becomes a drawer.
+
+## Pathology modules
+
+The **Patología / Pathology** tab turns the atlas into a pathology simulator. A module takes one topic (for example *Columna y médula*) and draws every entity of it **on this patient's real CT, at its real anatomical site**, found from the masks: a wedge fracture collapses the chosen vertebral body, a disc herniation comes out of the disc space between two real vertebrae, an abscess sits inside the real psoas.
+
+For each entity you get:
+
+- **Sliders and toggles** for what changes the image: size, grade, level, time course (e.g. spondylodiscitis at onset / 2 weeks / 8–12 weeks), acute vs chronic, **con / sin contraste**, and **sin / con tratamiento** (cement, injection, response to antibiotics).
+- **Técnica correcta vs equivocada.** Each entity lists the techniques the topic mentions, marked *técnica de elección* (★), *útil* or *no es la adecuada*, with one line on what each one shows or misses. Switching technique switches the image:
+  - **CT**: the real study, with the lesion drawn in Hounsfield units (hover reads the simulated HU);
+  - **Simulated plain film (Rx)**: a digitally reconstructed radiograph (DRR) computed from the CT, AP (coronal) or lateral (sagittal), with the lesion included;
+  - **Simulated MR (T1, T2, STIR)**: a pseudo-MR made from tissue density and anatomy (fat, fluid, marrow, oedema, flow void), so the contrasts the topic teaches — acute fracture bright on STIR, infected disc low T1 / high T2 — can be seen. Always badged *simulación*.
+  - **Contrast phases** (unenhanced, arterial, portal, delayed) are simulated from the acquired portal phase with per-organ HU targets.
+- **Side-by-side compare** of look-alikes (wedge vs burst, Jefferson vs hangman's, adult spondylodiscitis vs childhood discitis…), synchronised slice and zoom.
+- **Measurements** (heights, canal occupancy, disc height…), **teaching marks** that point at the sign, and the entity's *where / what you see / technique / differential / tip*.
+- **Coverage tag** on every entity, so it is always clear how real the picture is: *TC real* (drawn on existing masks), *TC aprox.* (site estimated: no mask for that structure), *Necesita data kit* (needs a mask or case that does not exist yet), *Simulación* (film, MR or phase simulated from CT), *Esquema* (an adult CT cannot show it; explained with a diagram).
+- **Flags** where the course material is outdated or inconsistent, or where the module adds something beyond it (*Ampliación*), so nothing beyond the syllabus is presented as course content.
+- **Exam mode**: identify the lesion, click on it, name its vertebral level, or answer written questions based on the topic's self-test; labels, level badge and lesion names are hidden while you answer.
+
+### Modules
+
+| Module | Entities | Coverage on s0591 (primary tag) |
+|---|---|---|
+| `columna` — Columna y médula | 12: compression (wedge) fracture, vertebroplasty, Jefferson, hangman's, burst, pyogenic spondylodiscitis, paravertebral / epidural abscess, childhood discitis, facet osteoarthritis, synovial cyst, uncovertebral osteoarthritis, disc herniation | 5 real CT · 6 approx. · 1 diagram |
+| `pulmon` — Parénquima pulmonar | 41: alveolar pattern and the five consolidation patterns, nine atelectasis types (incl. Golden's S and round atelectasis), angiogram sign and fluid bronchogram, secondary lobule, HRCT patterns (nodules, honeycombing, peribronchovascular, septal, ground glass, crazy paving), bronchiectasis, chronic bronchitis, emphysema (film signs, centrilobular, panlobular, paraseptal, bullous), solitary nodule benign vs malignant, pseudonodules, multiple nodules, central and peripheral carcinoma, Pancoast, ARDS/COVID-19 | 28 real · 7 approx. · 3 data kit · 2 sim · 1 diagram |
+| `mediastino` — Mediastino y pleura | 46: techniques and compartments; anterior, middle and posterior masses; aortic aneurysm, intramural haematoma, penetrating ulcer, dissection (Stanford); pulmonary hypertension, PE, pneumomediastinum; fissures, effusions (free, subpulmonary, loculated, phantom tumour), empyema, haemothorax, malignant effusion, pleural thickening, asbestos plaques, mesothelioma, pneumothorax and tension pneumothorax; chest-wall and diaphragm lesions | 28 real · 13 approx. · 3 data kit · 2 sim |
+| `higado` — Hígado, vía biliar y páncreas | 37: multiphase technique, MR sequences, hepatocyte-specific agents, contrast US, Couinaud; steatosis, haemochromatosis, cirrhosis, portal hypertension; cyst, hydatid, abscess, haemangioma, FNH, adenoma, cirrhotic nodules, HCC, intrahepatic cholangiocarcinoma, metastases; biliary anatomy and clinical triad, gallstones, cholecystitis (incl. emphysematous), gallbladder carcinoma, choledocholithiasis, Klatskin, extrahepatic cholangiocarcinoma; pancreatic techniques, oedematous and necrotising pancreatitis, chronic pancreatitis, adenocarcinoma, NET, serous / mucinous / IPMN | 23 real · 6 approx. · 5 sim · 2 data kit · 1 diagram |
+| `urinario` — Urinario, suprarrenales y próstata | 19: Bosniak on the patient's real right renal cyst, complicated cyst, angiomyolipoma, renal cell carcinoma (corticomedullary / nephrographic / excretory, IVC thrombus), bladder tumour, pyelonephritis, hydronephrosis, stones (film vs CT), dual-energy CT, ureteric jet, functional tests, adrenal incidentaloma algorithm with washout, adenoma, myelolipoma, metastasis, adrenal carcinoma, prostate zones, BPH, prostate cancer | 11 real · 3 approx. · 3 sim · 2 data kit |
+
+**What the data kit would add** (one-time TotalSegmentator run, see the coverage tags): `lung_vessels` (open licence) for bronchiectasis, fluid bronchogram and segmental PE; `liver_segments` + `liver_vessels` (open) for Couinaud; an arterial-phase angio-CT case for real arterial phases; a male case with a prostate mask + an MRI case for the prostate entities; a female case + `breasts` (open) for the breast prosthesis. `heartchambers_highres` (pulmonary trunk, chambers) is free only for non-commercial use.
+
+### Module links
+
+Add these to any atlas link (the usual `view`, `w`, `lang`… still work):
+
+| Parameter | Values | Example |
+|---|---|---|
+| `module` | module slug | `?module=columna` |
+| `e` | entity id | `?module=columna&e=estallido` |
+| `p` | parameters that differ from the defaults, `id:value` separated by commas | `?module=columna&e=compresion&p=level:T12,loss:40` |
+| `t` | technique id | `?module=columna&e=compresion&t=stir` |
+| `cmp` | entity to compare side by side | `?module=columna&e=jefferson&cmp=ahorcado` |
+| `tx` | `1` — show the treated state | `?module=columna&e=compresion&tx=1` |
+| `ph` | `sin`, `arterial`, `portal`, `tardia` | `?module=columna&e=absceso&ph=sin` |
+| `exam` | `1` — open straight into the exam | `?module=columna&exam=1` |
+
+Ready-made: [acute wedge fracture on STIR](https://ferasmed-dev.github.io/whole-body-ct-atlas/?module=columna&e=compresion&t=stir) · [wedge vs burst](https://ferasmed-dev.github.io/whole-body-ct-atlas/?module=columna&e=compresion&cmp=estallido) · [discitis: normal film at onset](https://ferasmed-dev.github.io/whole-body-ct-atlas/?module=columna&e=espondilodiscitis&t=rx&p=stage:inicio) · [spine exam](https://ferasmed-dev.github.io/whole-body-ct-atlas/?module=columna&exam=1).
+
+### How a module is built
+
+A module is one file, `modules/<slug>/module.js`, holding data and small build functions; the engine does the rest. Each entity declares its parameters, techniques, treatment, look-alikes and texts (Spanish and English), and a `build(params, anatomy, env)` that returns **lesion primitives** placed with the anatomy helpers:
+
+- primitives (`src/pathology.js`): `blob` (ellipsoid with soft or spiculated margin, rim, necrotic core, calcification pattern), `fill` (change a whole structure or part of it), `shell` (band outside a structure: wall thickening, effusion), `layer` (dependent layer inside a structure), `warp` (geometric deformation: collapse, slip, displacement), `plane` (fracture line), `tube` (duct, vessel, needle or trocar track), `cols` (per-voxel function) and `mark` (teaching arrow). Any of them can carry phase-dependent HU and pseudo-MR signal;
+- anatomy helpers: structure boxes and centres, vertebral body / canal / pedicles of any vertebra, the intervertebral disc between two vertebrae (found column by column, so the lordotic tilt does not matter), cord position per slice, vertebral level per slice.
+
+The engine turns the primitives into a **patch** (a small box of HU, labels and MR signal) that the viewer lays over the real volume, so lesions cost milliseconds and the 16 MB study is never copied. `src/modules.js` validates every module against `data/atlas.json` (bilingual texts, structures that exist, valid parameters and techniques) and generates exam questions; `tests/modules.test.js` builds every entity with default and random parameters and checks that the lesion lands where the view looks.
+
+To add a module: write `modules/<slug>/module.js` and add one line to `REGISTRY` in `src/modules.js`. Interface strings live in `src/i18n.js` (`mod.*`); module content strings live in the module file.
+
+### Limits of the simulation
+
+- The lesions are **teaching simulations** drawn on one adult man's portal-venous CT. They show where things are and what changes; they are not real pathology images.
+- **Simulated MR and plain film** are derived from CT density and anatomy. They reproduce the contrasts the topics teach, not MR physics or radiographic technique.
+- **Approximate sites**: structures the dataset does not segment (facet joints, discs, nodes, pleura, biliary tree…) are placed from neighbouring masks and tagged *TC aprox.*
+- The thorax of this patient may show trauma findings; check the chosen level before reading a simulated fracture. The left lower lobe already has real posterior consolidation / atelectasis, so the lung module avoids it as a target.
+- Simulated tissue gets CT-like grain (~12 HU) so it blends with the real image noise; ultrasound, Doppler, diffusion MR and nuclear medicine are not simulated (they appear as notes or diagrams).
 
 ## Curriculum fit
 
@@ -103,12 +169,16 @@ python3 tools/build.py /path/to/Totalsegmentator_dataset_small_v201/s0591 data
 ```
 index.html            page shell (Spanish by default)
 src/core.js           pure functions: decoding, windowing LUT, plane geometry, slice extraction, label layout, search, deep links
+src/pathology.js      pure pathology engine: lesion primitives → patches, anatomy helpers, contrast phases, pseudo-MR, simulated film
+src/modules.js        module registry, validation, parameters, module deep links, exam questions (pure)
+src/modui.js          pathology tab: entity picker, sliders, techniques, compare, exam
 src/i18n.js           all interface strings, ES + EN
 src/ui.js             loading, canvas rendering, interaction, sidebar, language switch; exposes window.__atlas for checks
 src/styles.css        dark workstation look; panels follow the OS light/dark setting
+modules/<slug>/       one pathology module per topic (content + build functions)
 data/                 ct.bin, labels.bin, atlas.json (generated)
 tools/                Python data pipeline
-tests/                node:test — core functions + data integrity and anatomical sanity checks
+tests/                node:test — core, data integrity, pathology engine, modules
 docs/screenshot.png
 ```
 
@@ -127,7 +197,14 @@ python3 -m http.server 8000
 npm test     # node --test, Node 20+
 ```
 
-19 tests: byte decoding, windowing, plane geometry round-trips, slice extraction in every plane, label anchoring and layout, search, deep-link validation, and checks on the shipped data — sizes and voxel counts, bilingual names, physiological HU (lung < −600, enhanced aorta > 120, liver 60–160, urine −10 to 40, bone > 250), radiological orientation (liver left of spleen on screen, sternum anterior to the cord, head before pelvis), vertebrae in order C1 → S1, and key levels within one level of the textbook value. They run on every push (`.github/workflows/test.yml`).
+43 tests (about two minutes: the module tests build every entity):
+
+- **Core (12):** byte decoding, windowing, plane geometry round-trips, slice extraction in every plane, label anchoring and layout, search, deep-link validation.
+- **Data (7):** sizes and voxel counts, bilingual names, physiological HU (lung < −600, enhanced aorta > 120, liver 60–160, urine −10 to 40, bone > 250), radiological orientation (liver left of spleen on screen, sternum anterior to the cord, head before pelvis), vertebrae in order C1 → S1, key levels within one level of the textbook value.
+- **Pathology engine (13):** every primitive (size, label, within/outside, rim/core, outer and inner bands, dependent and non-dependent layers, radial dilation, fracture plane, tube, warp), patches applied identically in all three planes, simulated film equal to the projection of the patched volume, phase shifts, pseudo-MR contrasts without jumps, and the anatomy helpers on the real masks (vertebral bodies in front of the canal, discs between adjacent bodies).
+- **Modules (11):** each module validates against the atlas; every entity builds a lesion near where its view looks, with default and random parameters; key numbers of the topic are shown (fracture deficits 0 / 0 / 25 / 50 %, ≈ 3 mm wedge); deep links round-trip; exam questions are well formed and reproducible; Spanish and English strings match; no course-material references in module text.
+
+They run on every push (`.github/workflows/test.yml`).
 
 ## Deploy
 

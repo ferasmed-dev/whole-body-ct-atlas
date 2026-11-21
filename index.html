@@ -27,6 +27,12 @@
       <h1 data-i="title">Atlas TC de cuerpo entero</h1>
       <div class="sub" id="seriesTxt"></div>
     </div>
+    <div class="tabs" id="sideTabs" role="tablist">
+      <button data-tab="atlas" class="on" role="tab" data-i="tabAtlas">Estructuras</button>
+      <button data-tab="path" role="tab" data-i="tabPath">Patología</button>
+    </div>
+    <div class="pane" id="panePath" hidden></div>
+    <div class="pane on" id="paneAtlas">
     <div class="card" id="card">
       <div class="t"><span class="dot" id="cDot"></span><div style="flex:1;min-width:0"><h3 id="cName"></h3><div class="en" id="cEn"></div></div><button class="x" id="cClose" data-it="close" aria-label="Cerrar">✕</button></div>
       <div class="meta" id="cMeta"></div>
@@ -40,6 +46,7 @@
     <div class="systems" id="systems"></div>
     <div class="opacrow"><span data-i="opacity">Opacidad del color</span><input type="range" id="opac" min="0.1" max="0.9" step="0.05" value="0.45" aria-label="Opacidad"></div>
     <div class="list" id="list"></div>
+    </div>
     <div class="foot"><span id="footTxt"></span><br><b data-i="disclaimer">Herramienta docente · no apta para uso clínico</b> · <a href="#" id="helpLink" data-i="help">Controles</a></div>
   </aside>
   <div class="scrim" id="scrim"></div>
@@ -73,6 +80,7 @@
         <div class="view v-axial active" data-plane="axial"><canvas class="main"></canvas><div class="tag"><span data-i="axial">Axial</span><i></i></div><canvas class="scout" width="80" height="150" data-it="scoutTitle"></canvas></div>
         <div class="view v-coronal" data-plane="coronal"><canvas class="main"></canvas><div class="tag"><span data-i="coronal">Coronal</span><i></i></div></div>
         <div class="view v-sagittal" data-plane="sagittal"><canvas class="main"></canvas><div class="tag"><span data-i="sagittal">Sagital</span><i></i></div></div>
+        <div class="view v-compare" data-plane="axial" data-slot="B"><canvas class="main"></canvas><div class="tag"><span data-i="compare">Comparar</span><i></i></div></div>
       </div>
       <div class="tip" id="tip"></div>
       <div class="toast" id="toast"></div>
