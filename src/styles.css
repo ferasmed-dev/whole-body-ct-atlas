@@ -256,3 +256,13 @@ body.exam #lvl,body.exam .keys{visibility:hidden}
 @media (max-width: 900px){
   .views.compare{grid-template-columns:1fr;grid-template-rows:1fr 1fr}
 }
+
+/* ---- Simulario theme: colours and logo only ---- */
+:root { --sim-accent: #6A60F5; --bg: #0E1024; --panel: #181B33; --panel2: #20243F; --line: #2A2E4A; --line2: #3B4066; --text: #F2F3FA; --dim: #A9ADC8; --faint: #6F7494; --acc: #3DDCB0; }
+@media (prefers-color-scheme: light) {
+  :root { --sim-accent: #4B3FE0; --bg: #F5F6FB; --panel: #FFFFFF; --panel2: #EEF0F7; --line: #E1E3EE; --line2: #C9CCE0; --text: #12142B; --dim: #5A5F7A; --faint: #7A7F99; --acc: #4B3FE0; }
+}
+.sim-brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: inherit; margin: 0 0 6px; }
+.sim-brand svg { display: block; flex: none; }
+.sim-brand b { font: 700 18px/1 "Space Grotesk", "Segoe UI", system-ui, sans-serif; letter-spacing: -.03em; }
+h1 { font-family: "Space Grotesk", "Segoe UI", system-ui, -apple-system, sans-serif; letter-spacing: -.02em; }
